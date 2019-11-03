@@ -76,12 +76,19 @@ def readfile(filename):
             continue
         splits = line.split(' ')
         sentence.append(splits[0])
-        label.append(splits[-1][:-1])
+        label.append(splits[-1][:-1])  # I think this is because we know the last thing on the line is going to have a \n
+            # and we want to remove it - this is total shit. Fucking Python.
 
     if len(sentence) >0:
         data.append((sentence,label))
         sentence = []
         label = []
+
+    # I think the comment above is lies. We actually end up with a tuple
+    # (
+    #   ['EU', 'rejects', 'German', 'call', 'to', 'boycott', 'British', ...],
+    #   ['B-ORG', '0', 'B-MISC', '0', '0', '0', 'B-MISC', ...]
+    # )
     return data
 
 class DataProcessor(object):
@@ -130,9 +137,9 @@ class NerProcessor(DataProcessor):
         examples = []
         for i,(sentence,label) in enumerate(lines):
             guid = "%s-%s" % (set_type, i)
-            text_a = ' '.join(sentence)
+            text_a = ' '.join(sentence)  # we've got the sentence into an array in _read_tsv == readfile and now we join it back together again
             text_b = None
-            label = label
+            label = label  # label is still an array of labels, one per word in the sentence
             examples.append(InputExample(guid=guid,text_a=text_a,text_b=text_b,label=label))
         return examples
 
@@ -202,7 +209,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
                               label_id=label_ids))
     return features
 
-def main():
+def get_parser():
     parser = argparse.ArgumentParser()
 
     ## Required parameters
@@ -292,6 +299,9 @@ def main():
                              "Positive power of 2: static loss scaling value.\n")
     parser.add_argument('--server_ip', type=str, default='', help="Can be used for distant debugging.")
     parser.add_argument('--server_port', type=str, default='', help="Can be used for distant debugging.")
+
+def main():
+    parser = get_parser()
     args = parser.parse_args()
 
     if args.server_ip and args.server_port:
@@ -409,10 +419,11 @@ def main():
         logger.info("  Num examples = %d", len(train_examples))
         logger.info("  Batch size = %d", args.train_batch_size)
         logger.info("  Num steps = %d", num_train_optimization_steps)
-        all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
-        all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
-        all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
+        all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)  # words converted to ids by tokenizer
+        all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)  # mask keeps everything
+        all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)  # segment ids are all 0
         all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.long)
+            # labels are ["O", "B-MISC", "I-MISC",  "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "X", "[CLS]", "[SEP]"]
         train_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
         if args.local_rank == -1:
             train_sampler = RandomSampler(train_data)
@@ -420,7 +431,7 @@ def main():
             train_sampler = DistributedSampler(train_data)
         train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.train_batch_size)
 
-        model.train()
+        model.train()  # this just sets the model to be in training mode (is method on pytorch nn.Module)
         for _ in trange(int(args.num_train_epochs), desc="Epoch"):
             tr_loss = 0
             nb_tr_examples, nb_tr_steps = 0, 0
